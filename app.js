@@ -33,7 +33,7 @@ DEFAULTS.away_school = { on: false, max: 500 };
 LAYERS.push({ id: 'away_school', label: 'Away from schools', color: '#868e96', extra: true, away: true, min: 200, maxv: 1500, step: 50 });
 // Personas are changes from the original brief. Schools, shops and so on stay as they are unless a persona says otherwise.
 const PERSONAS = [
-  { id: 'brief', label: 'Amenity family', hint: 'Everything close by: shops, train, park, schools and a gym.', set: {} },
+  { id: 'brief', label: 'Amenity family', hint: '', set: {} },
   { id: 'family', label: 'Young family', hint: 'Playground, primary school, childcare and a GP nearby. High schools can wait.', set: {
     high: { on: false }, gym: { on: false }, train: { max: 1000 }, park: { tier: 'park_play' }, childcare: { on: true }, gp: { on: true } } },
   { id: 'teens', label: 'Family with teens', hint: 'In the zone of a top high school, with a train and library for independent teens.', set: {
@@ -219,7 +219,12 @@ function cellPass(l, i) {
 const schedule = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; compute(); }); };
 const RGBA = (r, g, b, a) => ((a << 24) | (b << 16) | (g << 8) | r) >>> 0;
 const C_MATCH = RGBA(11, 122, 92, 255), C_SEL = RGBA(230, 110, 0, 255), C_SMALL = RGBA(11, 122, 92, 90);
-const RAMP = [[254, 240, 217], [253, 204, 138], [252, 141, 89], [215, 72, 48], [127, 39, 80]];
+// Near-misses lean towards the full-match green, so 5 of 6 reads as almost there rather than as a warning.
+const RAMP = [[252, 243, 207], [240, 228, 150], [196, 218, 120], [130, 200, 110]];
+function rampColor(k, K) {
+  const t = (K > 2 ? (k - 1) / (K - 2) : 1) * (RAMP.length - 1), i = Math.min(RAMP.length - 2, Math.floor(t)), f = t - i;
+  return RAMP[i].map((v, j) => Math.round(v + (RAMP[i + 1][j] - v) * f));
+}
 
 function compute() {
   const act = activeLayers(), K = act.length;
@@ -257,7 +262,7 @@ function compute() {
       if (K === 0) continue;
       if (k === K) { px32[i] = C_MATCH; continue; }
       if (k === 0) continue;
-      const t = RAMP[Math.min(RAMP.length - 1, Math.floor((k - 1) / Math.max(1, K - 1) * RAMP.length))];
+      const t = rampColor(k, K);
       px32[i] = RGBA(t[0], t[1], t[2], 230);
     }
   }
@@ -545,7 +550,7 @@ function renderLegend(K) {
     lg.innerHTML = `<div><i style="background:#0b7a5c"></i>Meets all layers</div><div><i style="background:rgba(11,122,92,.35)"></i>Smaller than ${S.minHa} ha</div><div><i style="background:#e66e00"></i>Selected pocket</div>`;
   } else {
     let h = '<div><i style="background:#0b7a5c"></i>All ' + K + ' layers</div>';
-    for (let k = K - 1; k >= 1; k--) { const t = RAMP[Math.min(RAMP.length - 1, Math.floor((k - 1) / Math.max(1, K - 1) * RAMP.length))]; h += `<div><i style="background:rgb(${t})"></i>${k} of ${K}</div>`; }
+    for (let k = K - 1; k >= 1; k--) { const t = rampColor(k, K); h += `<div><i style="background:rgb(${t})"></i>${k} of ${K}</div>`; }
     lg.innerHTML = h;
   }
 }

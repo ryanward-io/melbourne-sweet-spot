@@ -151,3 +151,4 @@ footer{flex-wrap:wrap;padding:10px 16px 16px;border-top:1px solid var(--line);di
 .pop .facts{margin-top:8px;padding-top:6px;border-top:1px solid #e5e5e5;font-size:12px;line-height:1.45}
 
 #pockets .pr { display: block; color: #666; font-size: 11px; margin-top: 1px; }
+#personaHint:empty { display: none; }
