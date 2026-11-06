@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Melbourne Sweet Spot</title>
+<link rel="stylesheet" href="vendor/leaflet.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<aside id="panel">
+  <div id="grab" role="button" tabindex="0" aria-label="Show or hide filters">
+    <span class="handle"></span>
+    <header>
+      <h1>Melbourne Sweet Spot</h1>
+      <p class="sub">Walking distance over the real path network. Turn layers on one at a time to see what survives.</p>
+    </header>
+    <div id="summary" aria-live="polite"></div>
+  </div>
+  <div id="scroll">
+  <section id="view" class="seg" role="group" aria-label="Map view">
+    <button data-view="all">Meets all</button>
+    <button data-view="count">How many met</button>
+  </section>
+  <section id="layers"></section>
+  <section class="block">
+    <details>
+      <summary>Land use &amp; display</summary>
+      <div id="landuse"></div>
+      <label class="row"><input type="checkbox" id="showPoi"> Show amenity pins</label>
+      <label class="row"><input type="checkbox" id="showParks"> Show park outlines (zoom in)</label>
+      <label class="row"><input type="checkbox" id="showZones"> Show zones of ticked schools</label>
+      <label class="row slider">Map opacity <input type="range" id="opacity" min="20" max="100" step="5"></label>
+    </details>
+  </section>
+  <section class="block" id="pocketBlock">
+    <div class="head">
+      <h2>Pockets <span id="pocketCount"></span></h2>
+      <button id="exportCsv" class="link">Export CSV</button>
+    </div>
+    <label class="row slider">Ignore pockets under <output id="minHaOut"></output>
+      <input type="range" id="minHa" min="0" max="40" step="1"></label>
+    <ol id="pockets"></ol>
+  </section>
+  <footer>
+    <button id="reset" class="link">Reset to the original brief</button>
+    <span id="built"></span>
+    <details class="credits">
+      <summary>Data and credits</summary>
+      <p>A personal house-hunting tool. Distances and listings can be out of date, so check anything that matters.</p>
+      <p>Map and places © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a> (ODbL). Places also from <a href="https://overturemaps.org" target="_blank" rel="noopener">Overture Maps Foundation</a>. Planning zones, suburbs and open space from Vicmap, © State of Victoria (CC BY 4.0). School locations and zones from the Victorian Department of Education. Train and tram stops from Public Transport Victoria via <a href="https://discover.data.vic.gov.au" target="_blank" rel="noopener">DataVic</a>. School results from <a href="https://bettereducation.com.au" target="_blank" rel="noopener">Better Education</a>. Gym details from each operator's website.</p>
+    </details>
+  </footer>
+  </div>
+</aside>
+<main id="map"></main>
+<div id="loading"><div>Loading map data… <span id="loadPct"></span></div></div>
+<script src="vendor/leaflet.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
