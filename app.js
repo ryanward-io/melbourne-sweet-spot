@@ -356,7 +356,7 @@ function buildLayers() {
       s.append(new Option('Median house price', 'house', false, st.kind === 'house'));
       s.append(new Option('Median unit price', 'unit', false, st.kind === 'unit'));
       s.onchange = () => { st.kind = s.value; schedule(); };
-      body.append(s, el('p', { class: 'note' }, 'Uses the suburb median, so a suburb above budget can still have homes you could afford.'));
+      body.append(s, el('p', { class: 'note' }, 'Uses the 2025 suburb median across all home sizes, so a 3 to 4 bedroom home will often cost more, and a suburb above budget can still have cheaper homes. Suburbs with no published median don’t pass.'));
     }
     if (L_.id === 'park') {
       const s = el('select', { 'aria-label': 'What counts as a decent park' });
@@ -501,17 +501,28 @@ function renderFunnel(act, cum, base) {
   $('#summary').innerHTML = `<b>${pockets.length.toLocaleString()} pockets</b><small>${(ha / 100).toFixed(1)} km² across ${sub.size} suburbs · ${base ? (left / base * 100).toFixed(1) : 0}% of residential land meets all ${act.length} layers</small>`;
 }
 
+/* Rough price for a pocket: suburb medians weighted by how much of the pocket is in each suburb. */
+function pocketPrice(p, kind) {
+  let v = 0, w = 0;
+  for (const s of p.subs) { const d = subs.suburbs[meta.locs.indexOf(s.name)]; if (d && d[kind]) { v += d[kind] * s.share; w += s.share; } }
+  return w >= 0.5 ? v / w : 0;
+}
 function renderPockets() {
   const ol = $('#pockets'); ol.textContent = '';
   $('#pocketCount').textContent = pockets.length ? `(${pockets.length})` : '';
   if (!pockets.length) { ol.append(el('li', { class: 'empty' }, 'No pockets at these settings. Relax a slider or lower the minimum size.')); return; }
   pockets.slice(0, 60).forEach((p, i) => {
     const names = p.subs.filter((s, j) => j === 0 || s.share > 0.2).slice(0, 3).map((s) => s.name).join(', ') || 'Unnamed';
-    const li = el('li', { class: p.id === selPocket ? 'sel' : '' }, el('span', { class: 'n' }, i + 1), el('span', { class: 's' }, names), el('span', { class: 'a' }, p.ha >= 100 ? (p.ha / 100).toFixed(1) + ' km²' : Math.round(p.ha) + ' ha'));
+    const li = el('li', { class: p.id === selPocket ? 'sel' : '' }, el('span', { class: 'n' }, i + 1), el('span', { class: 's' }, names, ...priceTag(p)), el('span', { class: 'a' }, p.ha >= 100 ? (p.ha / 100).toFixed(1) + ' km²' : Math.round(p.ha) + ' ha'));
     li.onclick = () => focusPocket(p);
     ol.append(li);
   });
   if (pockets.length > 60) ol.append(el('li', { class: 'empty' }, `…and ${pockets.length - 60} smaller pockets. Export CSV for the full list.`));
+}
+function priceTag(p) {
+  const h = pocketPrice(p, 'house'), u = pocketPrice(p, 'unit');
+  const t = [h && 'house ~' + fmtMoney(h), u && 'unit ~' + fmtMoney(u)].filter(Boolean).join(' · ');
+  return t ? [el('small', { class: 'pr' }, t)] : [];
 }
 function focusPocket(p) {
   selPocket = p.id;
@@ -624,7 +635,8 @@ async function openPopup(ll) {
   for (const l of extrasOn) line(l.label, nearest([l.id], (k) => pois[k], i, (p) => p.name || l.label), st[l.id].max, l.away);
   const sd = G.loc[i] ? subs.suburbs[G.loc[i] - 1] : null;
   const facts = [];
-  if (sd && (sd.house || sd.unit)) facts.push(`<b>Median price:</b> ${[sd.house && 'house ' + fmtMoney(sd.house), sd.unit && 'unit ' + fmtMoney(sd.unit)].filter(Boolean).join(', ')}${sd.priceNote ? ' <small>(' + esc(sd.priceNote) + ')</small>' : ''}`);
+  if (sd && (sd.house || sd.unit)) facts.push(`<b>Median price, 2025:</b> ${[sd.house && 'house ' + fmtMoney(sd.house), sd.unit && 'unit ' + fmtMoney(sd.unit)].filter(Boolean).join(', ')}${sd.priceNote ? ' <small>(' + esc(sd.priceNote) + ')</small>' : ''}`);
+  if (sd && (sd.houseQ || sd.unitQ)) facts.push(`<small>March quarter 2026: ${[sd.houseQ && `house ${fmtMoney(sd.houseQ)} (${sd.houseN} sales)`, sd.unitQ && `unit ${fmtMoney(sd.unitQ)} (${sd.unitN} sales)`].filter(Boolean).join(', ')}</small>`);
   if (sd && (sd.r3h || sd.r2f)) facts.push(`<b>Median weekly rent:</b> ${[sd.r3h && '3-bed house $' + sd.r3h, sd.r2f && '2-bed flat $' + sd.r2f].filter(Boolean).join(', ')}`);
   const zoneTxt = zones.length ? 'In the 2027 zone of: ' + zones.map((s) => `#${s.rank || '–'} ${esc(s.name)}`).join(', ') : 'Not in the zone of any listed high school';
   const q = encodeURIComponent(sub.toLowerCase()).replace(/%20/g, '+');
@@ -680,10 +692,10 @@ function initSheet() {
 }
 
 function exportCsv() {
-  const lines = ['rank,suburbs,hectares,lat,lon'];
+  const lines = ['rank,suburbs,hectares,lat,lon,approx_median_house,approx_median_unit'];
   pockets.forEach((p, i) => {
     const ll = cellLL(p.r, p.c);
-    lines.push([i + 1, '"' + p.subs.filter((s, j) => j === 0 || s.share > 0.2).map((s) => s.name).join('; ') + '"', p.ha.toFixed(1), ll.lat.toFixed(5), ll.lng.toFixed(5)].join(','));
+    lines.push([i + 1, '"' + p.subs.filter((s, j) => j === 0 || s.share > 0.2).map((s) => s.name).join('; ') + '"', p.ha.toFixed(1), ll.lat.toFixed(5), ll.lng.toFixed(5), Math.round(pocketPrice(p, 'house')) || '', Math.round(pocketPrice(p, 'unit')) || ''].join(','));
   });
   const a = el('a', { href: URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' })), download: 'pockets.csv' });
   a.click();
