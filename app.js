@@ -33,7 +33,7 @@ DEFAULTS.away_school = { on: false, max: 500 };
 LAYERS.push({ id: 'away_school', label: 'Away from schools', color: '#868e96', extra: true, away: true, min: 200, maxv: 1500, step: 50 });
 // Personas are changes from the original brief. Schools, shops and so on stay as they are unless a persona says otherwise.
 const PERSONAS = [
-  { id: 'brief', label: 'Our brief', hint: 'The original list: shops, train, park, schools and a gym.', set: {} },
+  { id: 'brief', label: 'Amenity family', hint: 'Everything close by: shops, train, park, schools and a gym.', set: {} },
   { id: 'family', label: 'Young family', hint: 'Playground, primary school, childcare and a GP nearby. High schools can wait.', set: {
     high: { on: false }, gym: { on: false }, train: { max: 1000 }, park: { tier: 'park_play' }, childcare: { on: true }, gp: { on: true } } },
   { id: 'teens', label: 'Family with teens', hint: 'In the zone of a top high school, with a train and library for independent teens.', set: {
