@@ -17,7 +17,7 @@ const LAYERS = [
   { id: 'train', label: 'Train station', min: 200, maxv: 3000, step: 50, color: '#0b7285' },
   { id: 'park', label: 'Decent park', min: 100, maxv: 2000, step: 50, color: '#2b8a3e' },
   { id: 'primary', label: 'Primary school', min: 200, maxv: 3000, step: 50, color: '#1971c2' },
-  { id: 'high', label: 'Good high school', min: 500, maxv: 5000, step: 100, color: '#7048e8' },
+  { id: 'high', label: 'High school', min: 500, maxv: 5000, step: 100, color: '#7048e8' },
   { id: 'gym', label: 'Gym', min: 200, maxv: 3000, step: 50, color: '#c2255c' },
   { id: 'price', label: 'Budget', min: 400000, maxv: 5000000, step: 50000, color: '#2f9e44', sub: true },
 ];
@@ -64,7 +64,7 @@ const BRAND_COLOR = { woolworths: '#1b7f3b', coles: '#d6001c', aldi: '#00539f' }
 let S, meta, pois, N, cols, rows;
 const G = {};            // decoded rasters
 const SRC = {};          // nearest-source rasters, loaded after first paint
-let cand, hsMin, zoneAny, hsBlob, zoneBlob;
+let cand, hsMin, zoneAny, hsBlob, hsFar, zoneBlob;
 let labels, pockets = [], selPocket = -1, subs, SUB, hasPrices = false;
 let canvas, ctx, img, px32, map, poiLayer, zoneLayer, parkLayer, parksData, zonesData, legendCtl;
 let raf = 0;
@@ -105,6 +105,14 @@ function ensureExtra(id) {
   return extraLoading[id];
 }
 
+/* Only the top schools ship with the page. Picking any other school fetches the rest. */
+let hsFarLoading;
+function ensureFar() {
+  if (hsFar || !S.high.schools.some((n) => schoolByName.get(n)?.far)) return Promise.resolve();
+  hsFarLoading ||= gz('highschools_all.u8.gz').then((b) => { hsFar = new Uint8Array(b); }).catch((e) => { hsFarLoading = null; throw e; });
+  return hsFarLoading;
+}
+const schoolByName = new Map();
 async function init() {
   meta = await (await fetch('data/meta.json')).json();
   ({ cols, rows } = meta); N = cols * rows;
@@ -124,6 +132,8 @@ async function init() {
   pois = p; G.res = new Uint8Array(res); G.loc = new Uint16Array(loc); hsBlob = new Uint8Array(hb); zoneBlob = new Uint8Array(zb);
   S = loadState();
   if (!S.high.schools) S.high.schools = meta.schools.filter((s) => s.on).map((s) => s.name);
+  meta.schools.forEach((s) => schoolByName.set(s.name, s));
+  await ensureFar().catch(() => {});
   await Promise.all(LAYERS.filter((l) => l.extra && S[l.id].on).map((l) => ensureExtra(l.id).catch(() => { S[l.id].on = false; })));
 
   const c = []; for (let i = 0; i < N; i++) if (G.res[i]) c.push(i);
@@ -192,10 +202,10 @@ function rebuildSchools() {
   const on = new Set(S.high.schools);
   for (const s of meta.schools) {
     if (!on.has(s.name)) continue;
-    const w = s.win;
-    for (let r = 0; r < w.h; r++) {
+    const w = s.win, blob = s.far ? hsFar : hsBlob;
+    if (blob) for (let r = 0; r < w.h; r++) {
       const o = (w.r0 + r) * cols + w.c0, b = w.off + r * w.w;
-      for (let c = 0; c < w.w; c++) { const v = hsBlob[b + c]; if (v < hsMin[o + c]) hsMin[o + c] = v; }
+      for (let c = 0; c < w.w; c++) { const v = blob[b + c]; if (v < hsMin[o + c]) hsMin[o + c] = v; }
     }
     const z = s.zone;
     if (z) for (let r = 0; r < z.h; r++) {
@@ -470,10 +480,16 @@ function schoolPicker() {
   const st = S.high; const wrap = el('div');
   const list = el('div', { id: 'schools' });
   const checks = new Map();
-  const apply = () => { rebuildSchools(); schedule(); if (S.showZones) drawZones(); count.textContent = st.schools.length + ' of ' + meta.schools.length + ' schools ticked'; };
+  const ticked = () => st.schools.length + ' of ' + meta.schools.length + ' schools ticked';
+  const apply = async () => {
+    count.textContent = 'Loading schools…';
+    try { await ensureFar(); count.textContent = ticked(); } catch (e) { count.textContent = 'Couldn’t load every school. Check your connection and try again.'; }
+    rebuildSchools(); schedule(); if (S.showZones) drawZones(); if (S.showPoi) drawPois();
+  };
   const setAll = (f) => { st.schools = meta.schools.filter(f).map((s) => s.name); const on = new Set(st.schools); checks.forEach((c, n) => { c.checked = on.has(n); }); apply(); };
   const q = el('div', { class: 'quick' });
-  const quick = { 'Top 10': (s) => s.rank <= 10, 'Top 30': (s) => s.on, 'All': () => true, 'Non-selective': (s) => s.on && !s.selective && !s.audition, 'Selective only': (s) => s.selective };
+  const quick = { 'Top 10 public': (s) => s.rank <= 10, 'Top 30 public': (s) => s.on, 'Top 30, non-selective': (s) => s.on && !s.selective && !s.audition, 'Selective only': (s) => s.selective,
+    'All public': (s) => s.sector === 'Government', 'All Catholic': (s) => s.sector === 'Catholic', 'All independent': (s) => s.sector === 'Independent', 'Every school': () => true };
   for (const k in quick) { const b = el('button', { type: 'button' }, k); b.onclick = () => setAll(quick[k]); q.append(b); }
   for (const s of meta.schools) {
     const cb = el('input', { type: 'checkbox', 'aria-label': s.name }); cb.checked = st.schools.includes(s.name); checks.set(s.name, cb);
@@ -481,14 +497,17 @@ function schoolPicker() {
     const badges = [];
     if (s.selective) badges.push(el('span', { class: 'badge sel' }, 'selective'));
     if (s.audition) badges.push(el('span', { class: 'badge sel' }, 'audition'));
+    if (s.sector !== 'Government') badges.push(el('span', { class: 'badge' }, s.sector.toLowerCase()));
     if (s.gender !== 'co-ed') badges.push(el('span', { class: 'badge' }, s.gender));
     if (s.k9) badges.push(el('span', { class: 'badge' }, 'to Yr 9 only'));
     const vce = s.median ? ' · VCE median ' + s.median : '';
-    list.append(el('label', { class: 'sch' }, cb, el('span', { class: 'rk' }, s.rank || '–'),
+    list.append(el('label', { class: 'sch', 'data-q': (s.name + ' ' + s.town).toLowerCase() }, cb, el('span', { class: 'rk' }, s.rank || '–'),
       el('span', { class: 'nm' }, s.name.replace(' Secondary College', ' SC').replace(' High School', ' HS'), ...badges, el('br'), el('span', { class: 'town' }, s.town + vce))));
   }
-  const count = el('p', { class: 'note' }, st.schools.length + ' of ' + meta.schools.length + ' schools ticked');
-  wrap.append(q, list, count);
+  const count = el('p', { class: 'note' }, ticked());
+  const find = el('input', { type: 'search', class: 'schoolFind', placeholder: 'Find a school or suburb', 'aria-label': 'Find a school or suburb' });
+  find.oninput = () => { const t = find.value.trim().toLowerCase(); for (const r of list.children) r.hidden = !r.dataset.q.includes(t); };
+  wrap.append(q, find, list, count);
   return wrap;
 }
 
@@ -571,7 +590,7 @@ function drawPois() {
     if (S.train.on) for (const k in TRAIN_KEYS) if (S.train.lines[k]) pois[TRAIN_KEYS[k]].forEach((p) => add(p, '#0b7285', 6, p.name));
   }
   if (z >= 14) for (const l of LAYERS) if (l.extra && S[l.id].on && pois[l.id]) pois[l.id].forEach((p) => add(p, l.color, 4, p.name || l.label));
-  if (S.high.on) { const on = new Set(S.high.schools); meta.schools.forEach((s) => { if (on.has(s.name)) add(s, '#7048e8', 7, `#${s.rank || '–'} ${s.name}`); }); }
+  if (S.high.on) { const on = new Set(S.high.schools); meta.schools.forEach((s) => { if (on.has(s.name)) add(s, '#7048e8', 7, schoolLabel(s)); }); }
 }
 async function drawParks() {
   if (parkLayer) { map.removeLayer(parkLayer); parkLayer = null; }
@@ -601,6 +620,7 @@ function nearest(keys, idxOf, i, labelFn) {
   const list = idxOf(best.k), id = SRC[best.k] ? SRC[best.k][i] : 0, p = id ? list[id - 1] : null;
   return { m: best.v * meta.step, capped: best.v >= meta.cap, name: p ? labelFn(p, best.k) : '', poi: p };
 }
+const schoolLabel = (s) => (s.rank ? `#${s.rank} ` : '') + s.name;
 const safeUrl = (u) => (/^https?:\/\//i.test(u || '') ? esc(u) : '');
 async function openPopup(ll) {
   const i = llCell(ll);
@@ -629,13 +649,15 @@ async function openPopup(ll) {
   for (const s of meta.schools) {
     const w = s.win;
     if (sel.has(s.name) && r >= w.r0 && r < w.r0 + w.h && c >= w.c0 && c < w.c0 + w.w) {
-      const v = hsBlob[w.off + (r - w.r0) * w.w + (c - w.c0)];
+      const blob = s.far ? hsFar : hsBlob;
+      if (!blob) continue;
+      const v = blob[w.off + (r - w.r0) * w.w + (c - w.c0)];
       if (v < meta.cap && (!hb || v < hb.v)) hb = { v, s };
     }
     const z = s.zone;
     if (z && r >= z.r0 && r < z.r0 + z.h && c >= z.c0 && c < z.c0 + z.w && zoneBlob[z.off + (r - z.r0) * z.w + (c - z.c0)]) zones.push(s);
   }
-  line('Good high school', hb ? { m: hb.v * meta.step, name: `#${hb.s.rank || '–'} ${hb.s.name}${hb.s.selective ? ' (selective)' : ''}` } : null, st.high.max);
+  line('High school', hb ? { m: hb.v * meta.step, name: schoolLabel(hb.s) + (hb.s.selective ? ' (selective)' : '') } : null, st.high.max);
   line('Gym', nearest(gyms, (k) => pois[k], i, (p, k) => `${p.name} · ${GYM_KINDS[k].label}`), st.gym.max);
   for (const l of extrasOn) line(l.label, nearest([l.id], (k) => pois[k], i, (p) => p.name || l.label), st[l.id].max, l.away);
   const sd = G.loc[i] ? subs.suburbs[G.loc[i] - 1] : null;
@@ -643,7 +665,7 @@ async function openPopup(ll) {
   if (sd && (sd.house || sd.unit)) facts.push(`<b>Median price, 2025:</b> ${[sd.house && 'house ' + fmtMoney(sd.house), sd.unit && 'unit ' + fmtMoney(sd.unit)].filter(Boolean).join(', ')}${sd.priceNote ? ' <small>(' + esc(sd.priceNote) + ')</small>' : ''}`);
   if (sd && (sd.houseQ || sd.unitQ)) facts.push(`<small>March quarter 2026: ${[sd.houseQ && `house ${fmtMoney(sd.houseQ)} (${sd.houseN} sales)`, sd.unitQ && `unit ${fmtMoney(sd.unitQ)} (${sd.unitN} sales)`].filter(Boolean).join(', ')}</small>`);
   if (sd && (sd.r3h || sd.r2f)) facts.push(`<b>Median weekly rent:</b> ${[sd.r3h && '3-bed house $' + sd.r3h, sd.r2f && '2-bed flat $' + sd.r2f].filter(Boolean).join(', ')}`);
-  const zoneTxt = zones.length ? 'In the 2027 zone of: ' + zones.map((s) => `#${s.rank || '–'} ${esc(s.name)}`).join(', ') : 'Not in the zone of any listed high school';
+  const zoneTxt = zones.length ? 'In the 2027 zone of: ' + zones.map((s) => esc(schoolLabel(s))).join(', ') : 'Not in a public high school zone';
   const q = encodeURIComponent(sub.toLowerCase()).replace(/%20/g, '+');
   const lat = ll.lat.toFixed(5), lon = ll.lng.toFixed(5);
   const html = `<div class="pop"><h3>${esc(sub || 'Unknown suburb')}</h3><table>${rowsH.join('')}</table><div class="facts">${facts.join('<br>')}</div><div class="z">${zoneTxt}</div>

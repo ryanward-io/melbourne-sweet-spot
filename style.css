@@ -152,3 +152,5 @@ footer{flex-wrap:wrap;padding:10px 16px 16px;border-top:1px solid var(--line);di
 
 #pockets .pr { display: block; color: #666; font-size: 11px; margin-top: 1px; }
 #personaHint:empty { display: none; }
+.schoolFind { width: 100%; box-sizing: border-box; margin: 6px 0; padding: 6px 8px; font: inherit; border: 1px solid #ccd; border-radius: 6px; }
+#schools .sch[hidden] { display: none; }
