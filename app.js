@@ -10,7 +10,6 @@ const DEFAULTS = {
   high: { on: true, max: 2000, mode: 'dist', schools: null },
   train: { on: true, max: 800, lines: { metro: true, vline: true } },
   gym: { on: true, max: 1000, kinds: { gym_full: true, gym_func: true, gym_spar: true, gym_climb: true, gym_combat: false, gym_women: false } },
-  crime: { on: false, max: 50 },
   price: { on: false, max: 1500000, kind: 'house' },
 };
 const LAYERS = [
@@ -20,7 +19,6 @@ const LAYERS = [
   { id: 'primary', label: 'Primary school', min: 200, maxv: 3000, step: 50, color: '#1971c2' },
   { id: 'high', label: 'Good high school', min: 500, maxv: 5000, step: 100, color: '#7048e8' },
   { id: 'gym', label: 'Gym', min: 200, maxv: 3000, step: 50, color: '#c2255c' },
-  { id: 'crime', label: 'Lower-crime suburb', min: 10, maxv: 90, step: 5, color: '#495057', sub: true },
   { id: 'price', label: 'Budget', min: 400000, maxv: 5000000, step: 50000, color: '#2f9e44', sub: true },
 ];
 // Optional filters: off to start, and only downloaded when switched on.
@@ -30,24 +28,27 @@ const EXTRAS = [
   ['library', 'Public library', '#4263eb'], ['tram', 'Tram stop', '#66a80f'], ['pool', 'Public pool', '#1098ad'], ['beach', 'Beach', '#d4a017'],
 ];
 for (const [id, label, color] of EXTRAS) { DEFAULTS[id] = { on: false, max: 1500 }; LAYERS.push({ id, label, color, extra: true, min: 200, maxv: 3000, step: 50 }); }
+// Keep-away filters pass when the nearest place is at least this far, in a straight line.
+DEFAULTS.away_school = { on: false, max: 500 };
+LAYERS.push({ id: 'away_school', label: 'Away from schools', color: '#868e96', extra: true, away: true, min: 200, maxv: 1500, step: 50 });
 // Personas are changes from the original brief. Schools, shops and so on stay as they are unless a persona says otherwise.
 const PERSONAS = [
   { id: 'brief', label: 'Our brief', hint: 'The original list: shops, train, park, schools and a gym.', set: {} },
   { id: 'family', label: 'Young family', hint: 'Playground, primary school, childcare and a GP nearby. High schools can wait.', set: {
-    high: { on: false }, gym: { on: false }, train: { max: 1000 }, park: { tier: 'park_play' }, childcare: { on: true }, gp: { on: true }, crime: { on: true } } },
+    high: { on: false }, gym: { on: false }, train: { max: 1000 }, park: { tier: 'park_play' }, childcare: { on: true }, gp: { on: true } } },
   { id: 'teens', label: 'Family with teens', hint: 'In the zone of a top high school, with a train and library for independent teens.', set: {
     primary: { on: false }, high: { mode: 'zone' }, library: { on: true } } },
-  { id: 'dinks', label: 'DINKs', hint: 'No schools. Good food, a pub, a gym and a train, apartments included.', set: {
-    primary: { on: false }, high: { on: false }, park: { tier: 'park_05' }, gym: { max: 800 }, cafe: { on: true, max: 800 }, restaurant: { on: true, max: 800 }, pub_bar: { on: true, max: 800 } } },
-  { id: 'parks', label: 'Park people', hint: 'A big park within 500 m, and nothing else matters.', set: {
-    supermarket: { on: false }, train: { on: false }, primary: { on: false }, high: { on: false }, gym: { on: false }, park: { tier: 'park_10', max: 500 } } },
-  { id: 'downsizers', label: 'Downsizers', hint: 'GP, pharmacy, café and library close by, in a quieter suburb. No schools or gym.', set: {
-    primary: { on: false }, high: { on: false }, gym: { on: false }, gp: { on: true, max: 800 }, pharmacy: { on: true, max: 800 }, cafe: { on: true, max: 800 }, library: { on: true }, crime: { on: true } } },
+  { id: 'dinks', label: 'DINKs', hint: 'At least 500 m from any school. Good food, a pub, a gym and a train, apartments included.', set: {
+    primary: { on: false }, high: { on: false }, park: { tier: 'park_05' }, gym: { max: 800 }, cafe: { on: true, max: 800 }, restaurant: { on: true, max: 800 }, pub_bar: { on: true, max: 800 }, away_school: { on: true } } },
+  { id: 'nature', label: 'Nature lovers', hint: 'A 20 ha park or reserve within 500 m, and nothing else matters.', set: {
+    supermarket: { on: false }, train: { on: false }, primary: { on: false }, high: { on: false }, gym: { on: false }, park: { tier: 'park_20', max: 500 } } },
+  { id: 'downsizers', label: 'Downsizers', hint: 'GP, pharmacy, café and library close by, at least 500 m from any school.', set: {
+    primary: { on: false }, high: { on: false }, gym: { on: false }, gp: { on: true, max: 800 }, pharmacy: { on: true, max: 800 }, cafe: { on: true, max: 800 }, library: { on: true }, away_school: { on: true } } },
   { id: 'beach', label: 'Beach life', hint: 'The beach within 800 m, with a coffee and a train not far away.', set: {
     primary: { on: false }, high: { on: false }, gym: { on: false }, park: { on: false }, train: { max: 1500 }, supermarket: { max: 1500 }, beach: { on: true, max: 800 }, cafe: { on: true, max: 800 } } },
 ];
 const LAND = { 1: 'Residential zones', 2: 'Low-density / rural living', 3: 'Commercial & activity centres (apartments)', 4: 'Urban growth (new estates)' };
-const TIERS = { park_05: 'Any park 0.5 ha or more', park_1: 'Park 1 ha or more (about 1.5 ovals)', park_3: 'Park 3 ha or more', park_10: 'Big park 10 ha or more', park_play: 'Park 1 ha or more with a playground' };
+const TIERS = { park_05: 'Any park 0.5 ha or more', park_1: 'Park 1 ha or more (about 1.5 ovals)', park_green: 'Park 1 ha or more, not just sports grounds', park_3: 'Park 3 ha or more', park_10: 'Big park 10 ha or more', park_20: 'Very big park 20 ha or more, not just sports grounds', park_play: 'Park 1 ha or more with a playground' };
 const BRAND_LABEL = { woolworths: 'Woolworths', coles: 'Coles', aldi: 'Aldi' };
 const GYM_KINDS = {
   gym_full: { label: 'Full gyms', hint: 'chains, leisure centres, independents', color: '#c2255c' },
@@ -109,9 +110,9 @@ async function init() {
   ({ cols, rows } = meta); N = cols * rows;
   subs = (await (await fetch('data/suburbs.json')).json());
   const subArr = (k, T) => T.from([0, ...subs.suburbs.map((d) => d[k] || 0)]);
-  SUB = { crime: subArr('pct', Uint8Array), house: subArr('house', Int32Array), unit: subArr('unit', Int32Array) };
+  SUB = { house: subArr('house', Int32Array), unit: subArr('unit', Int32Array) };
   hasPrices = SUB.house.some((v) => v > 0);
-  const names = ['woolworths', 'coles', 'aldi', 'train_metro', 'train_vline', 'gym_full', 'gym_func', 'gym_spar', 'gym_climb', 'gym_combat', 'gym_women', 'primary_gov', 'primary_nongov', 'park_05', 'park_1', 'park_3', 'park_10', 'park_play'];
+  const names = ['woolworths', 'coles', 'aldi', 'train_metro', 'train_vline', 'gym_full', 'gym_func', 'gym_spar', 'gym_climb', 'gym_combat', 'gym_women', 'primary_gov', 'primary_nongov', 'park_05', 'park_1', 'park_green', 'park_3', 'park_10', 'park_20', 'park_play'];
   let done = 0; const total = names.length + 4;
   const tick = () => { $('#loadPct').textContent = Math.round(++done / total * 100) + '%'; };
   const [p, res, loc, hb, zb] = await Promise.all([
@@ -175,9 +176,8 @@ function activeLayers() {
     const st = S[L_.id];
     if (!st.on) continue;
     const q = Math.round(st.max / meta.step);
-    if (L_.id === 'crime') { a.push({ id: L_.id, sub: SUB.crime, q: st.max }); continue; }
     if (L_.id === 'price') { if (hasPrices) a.push({ id: L_.id, sub: SUB[st.kind], q: st.max }); continue; }
-    if (L_.extra) { if (G[L_.id]) a.push({ id: L_.id, arrs: [G[L_.id]], q }); continue; }
+    if (L_.extra) { if (G[L_.id]) a.push({ id: L_.id, arrs: [G[L_.id]], q, away: L_.away }); continue; }
     if (L_.id === 'supermarket') a.push({ id: L_.id, arrs: Object.keys(st.brands).filter((b) => st.brands[b]).map((b) => G[b]), q });
     if (L_.id === 'park') a.push({ id: L_.id, arrs: [G[st.tier]], q });
     if (L_.id === 'primary') a.push({ id: L_.id, arrs: st.sector === 'gov' ? [G.primary_gov] : [G.primary_gov, G.primary_nongov], q });
@@ -205,6 +205,7 @@ function rebuildSchools() {
   }
 }
 function cellPass(l, i) {
+  if (l.away) return l.arrs[0][i] >= l.q;
   if (l.sub) { const v = l.sub[G.loc[i]]; return v > 0 && v <= l.q; }
   if (l.hs) {
     const d = hsMin[i] <= l.q;
@@ -316,8 +317,8 @@ function buildLayers() {
   const root = $('#layers'); root.textContent = '';
   const count = el('small', {});
   const more = el('details', { class: 'extras' }, el('summary', {}, 'More nearby things ', count));
-  const showCount = () => { const n = LAYERS.filter((l) => l.extra && S[l.id].on).length; count.textContent = n ? n + ' on' : 'optional'; };
-  more.open = LAYERS.some((l) => l.extra && S[l.id].on); showCount();
+  const showCount = () => { const n = LAYERS.filter((l) => l.extra && !l.away && S[l.id].on).length; count.textContent = n ? n + ' on' : 'optional'; };
+  more.open = LAYERS.some((l) => l.extra && !l.away && S[l.id].on); showCount();
   for (const L_ of LAYERS) {
     if (L_.id === 'price' && !hasPrices) continue;
     const st = S[L_.id];
@@ -326,9 +327,9 @@ function buildLayers() {
     const val = el('span', { class: 'val' });
     const title = el('label', { class: 'title' }, cb, el('span', {}, L_.label), val);
     const body = el('div', { class: 'body' });
-    const sl = el('input', { type: 'range', min: L_.min, max: L_.maxv, step: L_.step, 'aria-label': L_.label + ' max walking distance' }); sl.value = st.max;
+    const sl = el('input', { type: 'range', min: L_.min, max: L_.maxv, step: L_.step, 'aria-label': L_.label + (L_.away ? ' minimum straight-line distance' : ' max walking distance') }); sl.value = st.max;
     body.append(sl);
-    const showVal = () => { val.textContent = !st.on ? 'off' : L_.id === 'crime' ? 'safest ' + st.max + '%' : L_.id === 'price' ? 'up to ' + fmtMoney(st.max) : L_.id === 'high' && st.mode === 'zone' ? 'in zone' : 'within ' + fmtM(st.max); row.classList.toggle('off', !st.on); };
+    const showVal = () => { val.textContent = !st.on ? 'off' : L_.away ? 'at least ' + fmtM(st.max) : L_.id === 'price' ? 'up to ' + fmtMoney(st.max) : L_.id === 'high' && st.mode === 'zone' ? 'in zone' : 'within ' + fmtM(st.max); row.classList.toggle('off', !st.on); };
     cb.onchange = async () => {
       st.on = cb.checked;
       if (L_.extra && st.on) {
@@ -349,7 +350,7 @@ function buildLayers() {
       }
       body.append(ch);
     }
-    if (L_.id === 'crime') body.append(el('p', { class: 'note' }, 'Suburb-wide, not street by street. Ranks suburbs on assaults, robbery, home burglary, vehicle crime and property damage per resident. Suburbs under 1,000 people have no rate, so they don’t pass.'));
+    if (L_.away) body.append(el('p', { class: 'note' }, 'Every school counts here, ranked or not, public or private. Measured in a straight line, since this is about noise and traffic rather than the walk.'));
     if (L_.id === 'price') {
       const s = el('select', { 'aria-label': 'Property type for the budget' });
       s.append(new Option('Median house price', 'house', false, st.kind === 'house'));
@@ -406,7 +407,7 @@ function buildLayers() {
       body.append(seg, note, schoolPicker());
     }
     body.append(el('div', { class: 'funnel' }, el('i', { id: 'bar-' + L_.id })), el('div', { class: 'fn', id: 'fn-' + L_.id }));
-    row.append(title, body); (L_.extra ? more : root).append(row); showVal();
+    row.append(title, body); (L_.extra && !L_.away ? more : root).append(row); showVal();
   }
   root.append(more);
 }
@@ -560,8 +561,9 @@ async function drawParks() {
   if (parkLayer) { map.removeLayer(parkLayer); parkLayer = null; }
   if (!S.showParks || map.getZoom() < 13) return;
   if (!parksData) parksData = await (await fetch('data/parks.geojson')).json();
-  const minHa = { park_05: 0.5, park_1: 1, park_3: 3, park_10: 10, park_play: 1 }[S.park.tier];
-  parkLayer = L.geoJSON(parksData, { filter: (f) => f.properties.ha >= minHa && (S.park.tier !== 'park_play' || pois.parks[f.properties.i].play), style: { color: '#2b8a3e', weight: 1, fillColor: '#2b8a3e', fillOpacity: 0.12 }, interactive: false }).addTo(map);
+  const t = S.park.tier, minHa = { park_05: 0.5, park_1: 1, park_green: 1, park_3: 3, park_10: 10, park_20: 20, park_play: 1 }[t];
+  const fits = (p) => (t === 'park_play' ? p.play : t === 'park_green' || t === 'park_20' ? !p.sport : true);
+  parkLayer = L.geoJSON(parksData, { filter: (f) => f.properties.ha >= minHa && fits(pois.parks[f.properties.i]), style: { color: '#2b8a3e', weight: 1, fillColor: '#2b8a3e', fillOpacity: 0.12 }, interactive: false }).addTo(map);
 }
 async function drawZones() {
   if (zoneLayer) { map.removeLayer(zoneLayer); zoneLayer = null; }
@@ -594,8 +596,8 @@ async function openPopup(ll) {
   await ensureSrc([...brands, ...gyms, ...trains, ...prim, st.park.tier, ...extrasOn.map((l) => l.id)]);
   const sub = G.loc[i] ? meta.locs[G.loc[i] - 1] : '';
   const rowsH = [];
-  const line = (label, r, max) => {
-    const ok = r && !r.capped && r.m <= max;
+  const line = (label, r, max, away) => {
+    const ok = away ? !r || r.capped || r.m >= max : r && !r.capped && r.m <= max;
     let extra = '';
     if (r && r.name) extra += '<br><small>' + esc(r.name) + '</small>';
     if (r && r.poi && r.poi.addr) extra += '<br><small class="addr">' + esc(r.poi.addr) + '</small>';
@@ -604,7 +606,7 @@ async function openPopup(ll) {
   };
   line('Supermarket', nearest(brands, (k) => pois[k], i, (p, k) => p.name || BRAND_LABEL[k]), st.supermarket.max);
   line('Train station', nearest(trains, (k) => pois[k], i, (p) => p.name), st.train.max);
-  line('Park', nearest([st.park.tier], () => pois.parks, i, (p) => (p.name || 'Unnamed reserve') + ` (${p.ha} ha)`), st.park.max);
+  line('Park', nearest([st.park.tier], () => pois.parks, i, (p) => (p.name || 'Unnamed reserve') + ` (${p.ha} ha${p.play ? ', playground' : p.sport ? ', sports ground' : ''})`), st.park.max);
   line('Primary school', nearest(prim, (k) => pois[k], i, (p) => p.name), st.primary.max);
   const r = (i / cols) | 0, c = i % cols, sel = new Set(st.high.schools);
   let hb = null; const zones = [];
@@ -619,13 +621,11 @@ async function openPopup(ll) {
   }
   line('Good high school', hb ? { m: hb.v * meta.step, name: `#${hb.s.rank || '–'} ${hb.s.name}${hb.s.selective ? ' (selective)' : ''}` } : null, st.high.max);
   line('Gym', nearest(gyms, (k) => pois[k], i, (p, k) => `${p.name} · ${GYM_KINDS[k].label}`), st.gym.max);
-  for (const l of extrasOn) line(l.label, nearest([l.id], (k) => pois[k], i, (p) => p.name || l.label), st[l.id].max);
+  for (const l of extrasOn) line(l.label, nearest([l.id], (k) => pois[k], i, (p) => p.name || l.label), st[l.id].max, l.away);
   const sd = G.loc[i] ? subs.suburbs[G.loc[i] - 1] : null;
   const facts = [];
   if (sd && (sd.house || sd.unit)) facts.push(`<b>Median price:</b> ${[sd.house && 'house ' + fmtMoney(sd.house), sd.unit && 'unit ' + fmtMoney(sd.unit)].filter(Boolean).join(', ')}${sd.priceNote ? ' <small>(' + esc(sd.priceNote) + ')</small>' : ''}`);
   if (sd && (sd.r3h || sd.r2f)) facts.push(`<b>Median weekly rent:</b> ${[sd.r3h && '3-bed house $' + sd.r3h, sd.r2f && '2-bed flat $' + sd.r2f].filter(Boolean).join(', ')}`);
-  if (sd && sd.crime) facts.push(`<b>Crime:</b> ${sd.crime} per 1,000 residents a year, safer than ${100 - sd.pct}% of suburbs<br><small>Home burglary ${sd.burglary} · vehicle ${sd.vehicle} · assault and robbery ${sd.person} · damage ${sd.damage}</small>`);
-  else if (sd) facts.push('<b>Crime:</b> no rate for this suburb');
   const zoneTxt = zones.length ? 'In the 2027 zone of: ' + zones.map((s) => `#${s.rank || '–'} ${esc(s.name)}`).join(', ') : 'Not in the zone of any listed high school';
   const q = encodeURIComponent(sub.toLowerCase()).replace(/%20/g, '+');
   const lat = ll.lat.toFixed(5), lon = ll.lng.toFixed(5);
