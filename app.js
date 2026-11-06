@@ -10,6 +10,8 @@ const DEFAULTS = {
   high: { on: true, max: 2000, mode: 'dist', schools: null },
   train: { on: true, max: 800, lines: { metro: true, vline: true } },
   gym: { on: true, max: 1000, kinds: { gym_full: true, gym_func: true, gym_spar: true, gym_climb: true, gym_combat: false, gym_women: false } },
+  crime: { on: false, max: 50 },
+  price: { on: false, max: 1500000, kind: 'house' },
 };
 const LAYERS = [
   { id: 'supermarket', label: 'Supermarket', min: 200, maxv: 2500, step: 50, color: '#d9480f' },
@@ -18,6 +20,8 @@ const LAYERS = [
   { id: 'primary', label: 'Primary school', min: 200, maxv: 3000, step: 50, color: '#1971c2' },
   { id: 'high', label: 'Good high school', min: 500, maxv: 5000, step: 100, color: '#7048e8' },
   { id: 'gym', label: 'Gym', min: 200, maxv: 3000, step: 50, color: '#c2255c' },
+  { id: 'crime', label: 'Lower-crime suburb', min: 10, maxv: 90, step: 5, color: '#495057', sub: true },
+  { id: 'price', label: 'Budget', min: 400000, maxv: 5000000, step: 50000, color: '#2f9e44', sub: true },
 ];
 // Optional filters: off to start, and only downloaded when switched on.
 const EXTRAS = [
@@ -26,6 +30,22 @@ const EXTRAS = [
   ['library', 'Public library', '#4263eb'], ['tram', 'Tram stop', '#66a80f'], ['pool', 'Public pool', '#1098ad'], ['beach', 'Beach', '#d4a017'],
 ];
 for (const [id, label, color] of EXTRAS) { DEFAULTS[id] = { on: false, max: 1500 }; LAYERS.push({ id, label, color, extra: true, min: 200, maxv: 3000, step: 50 }); }
+// Personas are changes from the original brief. Schools, shops and so on stay as they are unless a persona says otherwise.
+const PERSONAS = [
+  { id: 'brief', label: 'Our brief', hint: 'The original list: shops, train, park, schools and a gym.', set: {} },
+  { id: 'family', label: 'Young family', hint: 'Playground, primary school, childcare and a GP nearby. High schools can wait.', set: {
+    high: { on: false }, gym: { on: false }, train: { max: 1000 }, park: { tier: 'park_play' }, childcare: { on: true }, gp: { on: true }, crime: { on: true } } },
+  { id: 'teens', label: 'Family with teens', hint: 'In the zone of a top high school, with a train and library for independent teens.', set: {
+    primary: { on: false }, high: { mode: 'zone' }, library: { on: true } } },
+  { id: 'dinks', label: 'DINKs', hint: 'No schools. Good food, a pub, a gym and a train, apartments included.', set: {
+    primary: { on: false }, high: { on: false }, park: { tier: 'park_05' }, gym: { max: 800 }, cafe: { on: true, max: 800 }, restaurant: { on: true, max: 800 }, pub_bar: { on: true, max: 800 } } },
+  { id: 'parks', label: 'Park people', hint: 'A big park within 500 m, and nothing else matters.', set: {
+    supermarket: { on: false }, train: { on: false }, primary: { on: false }, high: { on: false }, gym: { on: false }, park: { tier: 'park_10', max: 500 } } },
+  { id: 'downsizers', label: 'Downsizers', hint: 'GP, pharmacy, café and library close by, in a quieter suburb. No schools or gym.', set: {
+    primary: { on: false }, high: { on: false }, gym: { on: false }, gp: { on: true, max: 800 }, pharmacy: { on: true, max: 800 }, cafe: { on: true, max: 800 }, library: { on: true }, crime: { on: true } } },
+  { id: 'beach', label: 'Beach life', hint: 'The beach within 800 m, with a coffee and a train not far away.', set: {
+    primary: { on: false }, high: { on: false }, gym: { on: false }, park: { on: false }, train: { max: 1500 }, supermarket: { max: 1500 }, beach: { on: true, max: 800 }, cafe: { on: true, max: 800 } } },
+];
 const LAND = { 1: 'Residential zones', 2: 'Low-density / rural living', 3: 'Commercial & activity centres (apartments)', 4: 'Urban growth (new estates)' };
 const TIERS = { park_05: 'Any park 0.5 ha or more', park_1: 'Park 1 ha or more (about 1.5 ovals)', park_3: 'Park 3 ha or more', park_10: 'Big park 10 ha or more', park_play: 'Park 1 ha or more with a playground' };
 const BRAND_LABEL = { woolworths: 'Woolworths', coles: 'Coles', aldi: 'Aldi' };
@@ -44,21 +64,22 @@ let S, meta, pois, N, cols, rows;
 const G = {};            // decoded rasters
 const SRC = {};          // nearest-source rasters, loaded after first paint
 let cand, hsMin, zoneAny, hsBlob, zoneBlob;
-let labels, pockets = [], selPocket = -1;
+let labels, pockets = [], selPocket = -1, subs, SUB, hasPrices = false;
 let canvas, ctx, img, px32, map, poiLayer, zoneLayer, parkLayer, parksData, zonesData, legendCtl;
 let raf = 0;
 
 const $ = (s) => document.querySelector(s);
 const el = (t, a = {}, ...kids) => { const e = document.createElement(t); for (const k in a) { if (k === 'class') e.className = a[k]; else if (k === 'html') e.innerHTML = a[k]; else e.setAttribute(k, a[k]); } e.append(...kids); return e; };
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const fmtMoney = (v) => (v >= 1e6 ? '$' + (v / 1e6).toFixed(2).replace(/0$/, '') + 'm' : '$' + Math.round(v / 1000) + 'k');
 const fmtM = (m) => (m >= 1000 ? (m / 1000).toFixed(m % 1000 === 0 ? 0 : 1) + ' km' : m + ' m');
 
+const isObj = (v) => v && typeof v === 'object' && !Array.isArray(v);
+const merge = (to, from) => { for (const k in from) { if (isObj(to[k]) && isObj(from[k])) merge(to[k], from[k]); else to[k] = from[k]; } return to; };
 function loadState() {
   let saved = {};
   try { saved = JSON.parse(localStorage.getItem('pocketfinder') || '{}'); } catch (e) { /* ignore corrupt state */ }
   const d = structuredClone(DEFAULTS);
-  const isObj = (v) => v && typeof v === 'object' && !Array.isArray(v);
-  const merge = (to, from) => { for (const k in from) { if (isObj(to[k]) && isObj(from[k])) merge(to[k], from[k]); else to[k] = from[k]; } };
   // Merge level by level so options added since the settings were saved keep their defaults.
   for (const k in saved) if (k in d) { if (isObj(d[k]) && isObj(saved[k])) merge(d[k], saved[k]); else d[k] = saved[k]; }
   return d;
@@ -86,6 +107,10 @@ function ensureExtra(id) {
 async function init() {
   meta = await (await fetch('data/meta.json')).json();
   ({ cols, rows } = meta); N = cols * rows;
+  subs = (await (await fetch('data/suburbs.json')).json());
+  const subArr = (k, T) => T.from([0, ...subs.suburbs.map((d) => d[k] || 0)]);
+  SUB = { crime: subArr('pct', Uint8Array), house: subArr('house', Int32Array), unit: subArr('unit', Int32Array) };
+  hasPrices = SUB.house.some((v) => v > 0);
   const names = ['woolworths', 'coles', 'aldi', 'train_metro', 'train_vline', 'gym_full', 'gym_func', 'gym_spar', 'gym_climb', 'gym_combat', 'gym_women', 'primary_gov', 'primary_nongov', 'park_05', 'park_1', 'park_3', 'park_10', 'park_play'];
   let done = 0; const total = names.length + 4;
   const tick = () => { $('#loadPct').textContent = Math.round(++done / total * 100) + '%'; };
@@ -150,6 +175,8 @@ function activeLayers() {
     const st = S[L_.id];
     if (!st.on) continue;
     const q = Math.round(st.max / meta.step);
+    if (L_.id === 'crime') { a.push({ id: L_.id, sub: SUB.crime, q: st.max }); continue; }
+    if (L_.id === 'price') { if (hasPrices) a.push({ id: L_.id, sub: SUB[st.kind], q: st.max }); continue; }
     if (L_.extra) { if (G[L_.id]) a.push({ id: L_.id, arrs: [G[L_.id]], q }); continue; }
     if (L_.id === 'supermarket') a.push({ id: L_.id, arrs: Object.keys(st.brands).filter((b) => st.brands[b]).map((b) => G[b]), q });
     if (L_.id === 'park') a.push({ id: L_.id, arrs: [G[st.tier]], q });
@@ -178,6 +205,7 @@ function rebuildSchools() {
   }
 }
 function cellPass(l, i) {
+  if (l.sub) { const v = l.sub[G.loc[i]]; return v > 0 && v <= l.q; }
   if (l.hs) {
     const d = hsMin[i] <= l.q;
     return l.mode === 'dist' ? d : l.mode === 'zone' ? zoneAny[i] === 1 : d && zoneAny[i] === 1;
@@ -284,13 +312,14 @@ function llCell(ll) {
 }
 
 /* ---------- UI ---------- */
-function buildUI() {
-  const root = $('#layers');
+function buildLayers() {
+  const root = $('#layers'); root.textContent = '';
   const count = el('small', {});
   const more = el('details', { class: 'extras' }, el('summary', {}, 'More nearby things ', count));
   const showCount = () => { const n = LAYERS.filter((l) => l.extra && S[l.id].on).length; count.textContent = n ? n + ' on' : 'optional'; };
   more.open = LAYERS.some((l) => l.extra && S[l.id].on); showCount();
   for (const L_ of LAYERS) {
+    if (L_.id === 'price' && !hasPrices) continue;
     const st = S[L_.id];
     const row = el('div', { class: 'layer', id: 'L-' + L_.id });
     const cb = el('input', { type: 'checkbox', 'aria-label': L_.label + ' layer' }); cb.checked = st.on;
@@ -299,7 +328,7 @@ function buildUI() {
     const body = el('div', { class: 'body' });
     const sl = el('input', { type: 'range', min: L_.min, max: L_.maxv, step: L_.step, 'aria-label': L_.label + ' max walking distance' }); sl.value = st.max;
     body.append(sl);
-    const showVal = () => { val.textContent = st.on ? (L_.id === 'high' && st.mode === 'zone' ? 'in zone' : 'within ' + fmtM(st.max)) : 'off'; row.classList.toggle('off', !st.on); };
+    const showVal = () => { val.textContent = !st.on ? 'off' : L_.id === 'crime' ? 'safest ' + st.max + '%' : L_.id === 'price' ? 'up to ' + fmtMoney(st.max) : L_.id === 'high' && st.mode === 'zone' ? 'in zone' : 'within ' + fmtM(st.max); row.classList.toggle('off', !st.on); };
     cb.onchange = async () => {
       st.on = cb.checked;
       if (L_.extra && st.on) {
@@ -319,6 +348,14 @@ function buildUI() {
         ch.append(el('label', {}, i, BRAND_LABEL[b]));
       }
       body.append(ch);
+    }
+    if (L_.id === 'crime') body.append(el('p', { class: 'note' }, 'Suburb-wide, not street by street. Ranks suburbs on assaults, robbery, home burglary, vehicle crime and property damage per resident. Suburbs under 1,000 people have no rate, so they don’t pass.'));
+    if (L_.id === 'price') {
+      const s = el('select', { 'aria-label': 'Property type for the budget' });
+      s.append(new Option('Median house price', 'house', false, st.kind === 'house'));
+      s.append(new Option('Median unit price', 'unit', false, st.kind === 'unit'));
+      s.onchange = () => { st.kind = s.value; schedule(); };
+      body.append(s, el('p', { class: 'note' }, 'Uses the suburb median, so a suburb above budget can still have homes you could afford.'));
     }
     if (L_.id === 'park') {
       const s = el('select', { 'aria-label': 'What counts as a decent park' });
@@ -372,16 +409,42 @@ function buildUI() {
     row.append(title, body); (L_.extra ? more : root).append(row); showVal();
   }
   root.append(more);
-  document.querySelectorAll('#view button').forEach((b) => {
-    b.setAttribute('aria-pressed', b.dataset.view === S.view);
-    b.onclick = () => { S.view = b.dataset.view; document.querySelectorAll('#view button').forEach((x) => x.setAttribute('aria-pressed', x === b)); schedule(); };
-  });
-  const lu = $('#landuse');
+}
+function buildLand() {
+  const lu = $('#landuse'); lu.textContent = '';
   for (const k in LAND) {
     const i = el('input', { type: 'checkbox' }); i.checked = S.land[k];
     i.onchange = () => { S.land[k] = i.checked; schedule(); };
     lu.append(el('label', { class: 'row' }, i, LAND[k]));
   }
+}
+/* A persona is the original defaults plus its changes, so switching never inherits leftovers from the last one. */
+const personaState = (p) => merge(structuredClone(DEFAULTS), p.set);
+const filterKey = (st) => JSON.stringify([LAYERS.map((l) => { const { schools, ...x } = st[l.id]; return x; }), st.land]);
+function showPersona() {
+  const now = filterKey(S); let hit = null;
+  for (const p of PERSONAS) { const on = filterKey(personaState(p)) === now; if (on) hit = p; document.getElementById('P-' + p.id).setAttribute('aria-pressed', on); }
+  $('#personaHint').textContent = hit ? hit.hint : 'Your own mix. Pick a persona to start again from one.';
+}
+async function applyPersona(p) {
+  const next = personaState(p);
+  await Promise.all(LAYERS.filter((l) => l.extra && next[l.id].on).map((l) => ensureExtra(l.id).catch(() => { next[l.id].on = false; })));
+  for (const k of ['view', 'opacity', 'minHa', 'showPoi', 'showParks', 'showZones']) next[k] = S[k];
+  next.high.schools = S.high.schools;
+  S = next; selPocket = -1;
+  buildLayers(); buildLand(); schedule();
+  if (S.showPoi) drawPois();
+}
+function buildPersonas() {
+  const box = $('#personaBtns');
+  for (const p of PERSONAS) { const b = el('button', { type: 'button', id: 'P-' + p.id }, p.label); b.onclick = () => applyPersona(p); box.append(b); }
+}
+function buildUI() {
+  buildPersonas(); buildLayers(); buildLand();
+  document.querySelectorAll('#view button').forEach((b) => {
+    b.setAttribute('aria-pressed', b.dataset.view === S.view);
+    b.onclick = () => { S.view = b.dataset.view; document.querySelectorAll('#view button').forEach((x) => x.setAttribute('aria-pressed', x === b)); schedule(); };
+  });
   const bind = (id, key, fn) => { const e = $(id); e.checked = S[key]; e.onchange = () => { S[key] = e.checked; fn(); saveState(); }; };
   bind('#showPoi', 'showPoi', () => { if (S.showPoi) drawPois(); else poiLayer.clearLayers(); });
   bind('#showParks', 'showParks', drawParks);
@@ -433,6 +496,7 @@ function renderFunnel(act, cum, base) {
   const left = act.length ? cum[act.length - 1] : base;
   const ha = pockets.reduce((t, p) => t + p.ha, 0);
   const sub = new Set(pockets.flatMap((p) => p.subs.filter((s) => s.share > 0.15).map((s) => s.name)));
+  showPersona();
   $('#summary').innerHTML = `<b>${pockets.length.toLocaleString()} pockets</b><small>${(ha / 100).toFixed(1)} km² across ${sub.size} suburbs · ${base ? (left / base * 100).toFixed(1) : 0}% of residential land meets all ${act.length} layers</small>`;
 }
 
@@ -556,10 +620,16 @@ async function openPopup(ll) {
   line('Good high school', hb ? { m: hb.v * meta.step, name: `#${hb.s.rank || '–'} ${hb.s.name}${hb.s.selective ? ' (selective)' : ''}` } : null, st.high.max);
   line('Gym', nearest(gyms, (k) => pois[k], i, (p, k) => `${p.name} · ${GYM_KINDS[k].label}`), st.gym.max);
   for (const l of extrasOn) line(l.label, nearest([l.id], (k) => pois[k], i, (p) => p.name || l.label), st[l.id].max);
+  const sd = G.loc[i] ? subs.suburbs[G.loc[i] - 1] : null;
+  const facts = [];
+  if (sd && (sd.house || sd.unit)) facts.push(`<b>Median price:</b> ${[sd.house && 'house ' + fmtMoney(sd.house), sd.unit && 'unit ' + fmtMoney(sd.unit)].filter(Boolean).join(', ')}${sd.priceNote ? ' <small>(' + esc(sd.priceNote) + ')</small>' : ''}`);
+  if (sd && (sd.r3h || sd.r2f)) facts.push(`<b>Median weekly rent:</b> ${[sd.r3h && '3-bed house $' + sd.r3h, sd.r2f && '2-bed flat $' + sd.r2f].filter(Boolean).join(', ')}`);
+  if (sd && sd.crime) facts.push(`<b>Crime:</b> ${sd.crime} per 1,000 residents a year, safer than ${100 - sd.pct}% of suburbs<br><small>Home burglary ${sd.burglary} · vehicle ${sd.vehicle} · assault and robbery ${sd.person} · damage ${sd.damage}</small>`);
+  else if (sd) facts.push('<b>Crime:</b> no rate for this suburb');
   const zoneTxt = zones.length ? 'In the 2027 zone of: ' + zones.map((s) => `#${s.rank || '–'} ${esc(s.name)}`).join(', ') : 'Not in the zone of any listed high school';
   const q = encodeURIComponent(sub.toLowerCase()).replace(/%20/g, '+');
   const lat = ll.lat.toFixed(5), lon = ll.lng.toFixed(5);
-  const html = `<div class="pop"><h3>${esc(sub || 'Unknown suburb')}</h3><table>${rowsH.join('')}</table><div class="z">${zoneTxt}</div>
+  const html = `<div class="pop"><h3>${esc(sub || 'Unknown suburb')}</h3><table>${rowsH.join('')}</table><div class="facts">${facts.join('<br>')}</div><div class="z">${zoneTxt}</div>
     <div class="links"><a target="_blank" rel="noopener" href="https://www.realestate.com.au/buy/in-${q},+vic/list-1">Homes for sale</a>
     <a target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${lat},${lon}">Google Maps</a>
     <a target="_blank" rel="noopener" href="https://www.findmyschool.vic.gov.au/">Check zone</a></div></div>`;

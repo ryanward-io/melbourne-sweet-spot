@@ -4,7 +4,7 @@ An interactive map for finding the parts of Melbourne where the things you want 
 
 **Live: https://ryanward.dev/melbourne-sweet-spot/**
 
-Pick what matters, such as a supermarket, train station, park, schools and gyms, and set how far you'd walk to each. The map shows the pockets of residential land that meet every filter, and tapping anywhere shows what's nearest. Optional filters cover cafés, restaurants, pubs, GPs, pharmacies, childcare, libraries, tram stops, public pools and beaches.
+Pick what matters, such as a supermarket, train station, park, schools and gyms, and set how far you'd walk to each. The map shows the pockets of residential land that meet every filter, and tapping anywhere shows what's nearest. Optional filters cover cafés, restaurants, pubs, GPs, pharmacies, childcare, libraries, tram stops, public pools and beaches. There's a lower-crime filter, and personas such as Young family and DINKs set everything at once.
 
 ## How it works
 
@@ -18,4 +18,4 @@ Listings can be out of date, and proximity says nothing about quality. A home ne
 
 ## Data
 
-Built from OpenStreetMap (ODbL), Overture Maps, Vicmap, the Victorian Department of Education, Public Transport Victoria, Better Education and gym operators' own websites. Full credits are in the app. The map data stays under its original licences.
+Built from OpenStreetMap (ODbL), Overture Maps, Vicmap, the Victorian Department of Education, Public Transport Victoria, the Crime Statistics Agency, the ABS, Homes Victoria, Better Education and gym operators' own websites. Full credits are in the app. The map data stays under its original licences.
