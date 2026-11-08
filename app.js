@@ -87,8 +87,18 @@ function loadState() {
 }
 const saveState = () => localStorage.setItem('pocketfinder', JSON.stringify(S));
 
+/* Static hosts occasionally drop a request with a 5xx; retry twice so one blip doesn't stop the whole map loading. */
+async function getData(url) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const r = await fetch(url);
+      if (r.ok || r.status < 500 || attempt >= 2) return r;
+    } catch (e) { if (attempt >= 2) throw e; }
+    await new Promise((ok) => setTimeout(ok, 700 * (attempt + 1)));
+  }
+}
 async function gz(path) {
-  const r = await fetch('data/' + path);
+  const r = await getData('data/' + path);
   if (!r.ok) throw new Error(path + ' ' + r.status);
   const st = r.body.pipeThrough(new DecompressionStream('gzip'));
   return new Response(st).arrayBuffer();
@@ -99,7 +109,7 @@ function ensureExtra(id) {
   if (!extraLoading[id]) {
     extraLoading[id] = Promise.all([
       gz(id + '.u8.gz').then((b) => { G[id] = new Uint8Array(b); }),
-      fetch('data/poi_' + id + '.json').then((r) => { if (!r.ok) throw new Error(id + ' ' + r.status); return r.json(); }).then((p) => { pois[id] = p; }),
+      getData('data/poi_' + id + '.json').then((r) => { if (!r.ok) throw new Error(id + ' ' + r.status); return r.json(); }).then((p) => { pois[id] = p; }),
     ]).catch((e) => { delete extraLoading[id]; throw e; });
   }
   return extraLoading[id];
@@ -120,9 +130,9 @@ function chosenSchools() {
   return new Set(S.high.schools.filter((n) => { const s = schoolByName.get(n); return s && (sec === 'both' || isPublic(s) === (sec === 'public')); }));
 }
 async function init() {
-  meta = await (await fetch('data/meta.json')).json();
+  meta = await (await getData('data/meta.json')).json();
   ({ cols, rows } = meta); N = cols * rows;
-  subs = (await (await fetch('data/suburbs.json')).json());
+  subs = (await (await getData('data/suburbs.json')).json());
   const subArr = (k, T) => T.from([0, ...subs.suburbs.map((d) => d[k] || 0)]);
   SUB = { house: subArr('house', Int32Array), unit: subArr('unit', Int32Array) };
   hasPrices = SUB.house.some((v) => v > 0);
@@ -130,7 +140,7 @@ async function init() {
   let done = 0; const total = names.length + 4;
   const tick = () => { $('#loadPct').textContent = Math.round(++done / total * 100) + '%'; };
   const [p, res, loc, hb, zb] = await Promise.all([
-    fetch('data/pois.json').then((r) => r.json()).finally(tick),
+    getData('data/pois.json').then((r) => r.json()).finally(tick),
     gz('res.u8.gz').finally(tick), gz('loc.u16.gz').finally(tick),
     gz('highschools.u8.gz').finally(tick), gz('zones.u8.gz'),
     ...names.map((n) => gz(n + '.u8.gz').then((b) => { G[n] = new Uint8Array(b); tick(); })),
@@ -623,7 +633,7 @@ function drawPois() {
 async function drawParks() {
   if (parkLayer) { map.removeLayer(parkLayer); parkLayer = null; }
   if (!S.showParks || map.getZoom() < 13) return;
-  if (!parksData) parksData = await (await fetch('data/parks.geojson')).json();
+  if (!parksData) parksData = await (await getData('data/parks.geojson')).json();
   const t = S.park.tier, minHa = { park_05: 0.5, park_1: 1, park_green: 1, park_3: 3, park_10: 10, park_20: 20, park_play: 1 }[t];
   const fits = (p) => (t === 'park_play' ? p.play : t === 'park_green' || t === 'park_20' ? !p.sport : true);
   parkLayer = L.geoJSON(parksData, { filter: (f) => f.properties.ha >= minHa && fits(pois.parks[f.properties.i]), style: { color: '#2b8a3e', weight: 1, fillColor: '#2b8a3e', fillOpacity: 0.12 }, interactive: false }).addTo(map);
@@ -631,7 +641,7 @@ async function drawParks() {
 async function drawZones() {
   if (zoneLayer) { map.removeLayer(zoneLayer); zoneLayer = null; }
   if (!S.showZones) return;
-  if (!zonesData) zonesData = await (await fetch('data/zones.geojson')).json();
+  if (!zonesData) zonesData = await (await getData('data/zones.geojson')).json();
   const on = chosenSchools();
   zoneLayer = L.geoJSON(zonesData, { filter: (f) => on.has(f.properties.name), style: { color: '#7048e8', weight: 1.5, fillOpacity: 0.04, dashArray: '4 3' }, interactive: false, onEachFeature: undefined }).addTo(map);
 }
