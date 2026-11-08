@@ -7,7 +7,7 @@ const DEFAULTS = {
   supermarket: { on: true, max: 800, brands: { woolworths: true, coles: true, aldi: true } },
   park: { on: true, max: 800, tier: 'park_1' },
   primary: { on: true, max: 1000, sector: 'any' },
-  high: { on: true, max: 2000, mode: 'dist', schools: null },
+  high: { on: true, max: 2000, mode: 'dist', schools: null, sector: 'public' },
   train: { on: true, max: 800, lines: { metro: true, vline: true } },
   gym: { on: true, max: 1000, kinds: { gym_full: true, gym_func: true, gym_spar: true, gym_climb: true, gym_combat: false, gym_women: false } },
   price: { on: false, max: 1500000, kind: 'house' },
@@ -108,11 +108,17 @@ function ensureExtra(id) {
 /* Only the top schools ship with the page. Picking any other school fetches the rest. */
 let hsFarLoading;
 function ensureFar() {
-  if (hsFar || !S.high.schools.some((n) => schoolByName.get(n)?.far)) return Promise.resolve();
+  if (hsFar || ![...chosenSchools()].some((n) => schoolByName.get(n).far)) return Promise.resolve();
   hsFarLoading ||= gz('highschools_all.u8.gz').then((b) => { hsFar = new Uint8Array(b); }).catch((e) => { hsFarLoading = null; throw e; });
   return hsFarLoading;
 }
 const schoolByName = new Map();
+const isPublic = (s) => s.sector === 'Government';
+/* Ticks are kept for every school; the public/private switch decides which of them count. */
+function chosenSchools() {
+  const sec = S.high.sector;
+  return new Set(S.high.schools.filter((n) => { const s = schoolByName.get(n); return s && (sec === 'both' || isPublic(s) === (sec === 'public')); }));
+}
 async function init() {
   meta = await (await fetch('data/meta.json')).json();
   ({ cols, rows } = meta); N = cols * rows;
@@ -133,6 +139,8 @@ async function init() {
   S = loadState();
   if (!S.high.schools) S.high.schools = meta.schools.filter((s) => s.on).map((s) => s.name);
   meta.schools.forEach((s) => schoolByName.set(s.name, s));
+  // Private schools aren't ranked, so all of them start ticked; the switch keeps them out until chosen.
+  if (!S.high.privTicked) { S.high.schools = [...new Set([...S.high.schools, ...meta.schools.filter((s) => !isPublic(s)).map((s) => s.name)])]; S.high.privTicked = true; }
   await ensureFar().catch(() => {});
   await Promise.all(LAYERS.filter((l) => l.extra && S[l.id].on).map((l) => ensureExtra(l.id).catch(() => { S[l.id].on = false; })));
 
@@ -199,7 +207,7 @@ function activeLayers() {
 }
 function rebuildSchools() {
   hsMin.fill(meta.cap); zoneAny.fill(0);
-  const on = new Set(S.high.schools);
+  const on = chosenSchools();
   for (const s of meta.schools) {
     if (!on.has(s.name)) continue;
     const w = s.win, blob = s.far ? hsFar : hsBlob;
@@ -410,7 +418,7 @@ function buildLayers() {
       const note = el('p', { class: 'note' });
       const setNote = () => {
         note.textContent = st.mode === 'dist' ? 'Living near a school doesn’t guarantee a place: zoned schools enrol by address and selective schools by exam.'
-          : 'Uses 2027 zones. Selective and audition schools have no zone, so they don’t count here.';
+          : 'Uses 2027 zones. Private, selective and audition schools have no zone, so they don’t count here.';
       };
       for (const m in modes) {
         const b = el('button', { type: 'button' }, modes[m]);
@@ -436,7 +444,7 @@ function buildLand() {
 }
 /* A persona is the original defaults plus its changes, so switching never inherits leftovers from the last one. */
 const personaState = (p) => merge(structuredClone(DEFAULTS), p.set);
-const filterKey = (st) => JSON.stringify([LAYERS.map((l) => { const { schools, ...x } = st[l.id]; return x; }), st.land]);
+const filterKey = (st) => JSON.stringify([LAYERS.map((l) => { const { schools, privTicked, ...x } = st[l.id]; return x; }), st.land]);
 function showPersona() {
   const now = filterKey(S); let hit = null;
   for (const p of PERSONAS) { const on = filterKey(personaState(p)) === now; if (on) hit = p; document.getElementById('P-' + p.id).setAttribute('aria-pressed', on); }
@@ -446,7 +454,7 @@ async function applyPersona(p) {
   const next = personaState(p);
   await Promise.all(LAYERS.filter((l) => l.extra && next[l.id].on).map((l) => ensureExtra(l.id).catch(() => { next[l.id].on = false; })));
   for (const k of ['view', 'opacity', 'minHa', 'showPoi', 'showParks', 'showZones']) next[k] = S[k];
-  next.high.schools = S.high.schools;
+  next.high.schools = S.high.schools; next.high.privTicked = S.high.privTicked;
   S = next; selPocket = -1;
   buildLayers(); buildLand(); schedule();
   if (S.showPoi) drawPois();
@@ -479,35 +487,55 @@ function buildUI() {
 function schoolPicker() {
   const st = S.high; const wrap = el('div');
   const list = el('div', { id: 'schools' });
-  const checks = new Map();
-  const ticked = () => st.schools.length + ' of ' + meta.schools.length + ' schools ticked';
+  const checks = new Map(), rows = new Map();
+  const shown = (s) => st.sector === 'both' || isPublic(s) === (st.sector === 'public');
+  const ticked = () => { const n = meta.schools.filter(shown).length; return chosenSchools().size + ' of ' + n + ' schools ticked'; };
   const apply = async () => {
     count.textContent = 'Loading schools…';
     try { await ensureFar(); count.textContent = ticked(); } catch (e) { count.textContent = 'Couldn’t load every school. Check your connection and try again.'; }
     rebuildSchools(); schedule(); if (S.showZones) drawZones(); if (S.showPoi) drawPois();
   };
-  const setAll = (f) => { st.schools = meta.schools.filter(f).map((s) => s.name); const on = new Set(st.schools); checks.forEach((c, n) => { c.checked = on.has(n); }); apply(); };
-  const q = el('div', { class: 'quick' });
-  const quick = { 'Top 10 public': (s) => s.rank <= 10, 'Top 30 public': (s) => s.on, 'Top 30, non-selective': (s) => s.on && !s.selective && !s.audition, 'Selective only': (s) => s.selective,
-    'All public': (s) => s.sector === 'Government', 'All Catholic': (s) => s.sector === 'Catholic', 'All independent': (s) => s.sector === 'Independent', 'Every school': () => true };
-  for (const k in quick) { const b = el('button', { type: 'button' }, k); b.onclick = () => setAll(quick[k]); q.append(b); }
+  // A quick button only resets ticks within its own sector, so public and private choices stay independent.
+  const setGroup = (inGroup, f) => {
+    const keep = st.schools.filter((n) => !inGroup(schoolByName.get(n) || {}));
+    st.schools = [...keep, ...meta.schools.filter((s) => inGroup(s) && f(s)).map((s) => s.name)];
+    const on = new Set(st.schools); checks.forEach((c, n) => { c.checked = on.has(n); }); apply();
+  };
+  const seg = el('div', { class: 'seg small', role: 'group', 'aria-label': 'Public or private schools' });
+  const qPub = el('div', { class: 'quick' }), qPriv = el('div', { class: 'quick' });
+  const pub = { 'Top 10': (s) => s.rank <= 10, 'Top 30': (s) => s.on, 'Top 30, non-selective': (s) => s.on && !s.selective && !s.audition, 'Selective only': (s) => s.selective, 'All public': () => true };
+  const priv = { 'All private': () => true, 'Catholic only': (s) => s.sector === 'Catholic', 'Independent only': (s) => s.sector === 'Independent' };
+  for (const k in pub) { const b = el('button', { type: 'button' }, k); b.onclick = () => setGroup(isPublic, pub[k]); qPub.append(b); }
+  for (const k in priv) { const b = el('button', { type: 'button' }, k); b.onclick = () => setGroup((s) => s.sector && !isPublic(s), priv[k]); qPriv.append(b); }
+  const find = el('input', { type: 'search', class: 'schoolFind', placeholder: 'Find a school or suburb', 'aria-label': 'Find a school or suburb' });
+  const filterRows = () => { const t = find.value.trim().toLowerCase(); rows.forEach((r, s) => { r.hidden = !shown(s) || !r.dataset.q.includes(t); }); };
+  const showSector = () => {
+    [...seg.children].forEach((x) => x.setAttribute('aria-pressed', x.dataset.v === st.sector));
+    qPub.hidden = st.sector === 'private'; qPriv.hidden = st.sector === 'public'; filterRows();
+  };
+  for (const [v, lab] of [['public', 'Public'], ['private', 'Private'], ['both', 'Both']]) {
+    const b = el('button', { type: 'button', 'data-v': v }, lab);
+    b.onclick = () => { st.sector = v; showSector(); apply(); };
+    seg.append(b);
+  }
   for (const s of meta.schools) {
     const cb = el('input', { type: 'checkbox', 'aria-label': s.name }); cb.checked = st.schools.includes(s.name); checks.set(s.name, cb);
     cb.onchange = () => { const set = new Set(st.schools); if (cb.checked) set.add(s.name); else set.delete(s.name); st.schools = [...set]; apply(); };
     const badges = [];
     if (s.selective) badges.push(el('span', { class: 'badge sel' }, 'selective'));
     if (s.audition) badges.push(el('span', { class: 'badge sel' }, 'audition'));
-    if (s.sector !== 'Government') badges.push(el('span', { class: 'badge' }, s.sector.toLowerCase()));
+    if (!isPublic(s)) badges.push(el('span', { class: 'badge' }, s.sector.toLowerCase()));
     if (s.gender !== 'co-ed') badges.push(el('span', { class: 'badge' }, s.gender));
     if (s.k9) badges.push(el('span', { class: 'badge' }, 'to Yr 9 only'));
     const vce = s.median ? ' · VCE median ' + s.median : '';
-    list.append(el('label', { class: 'sch', 'data-q': (s.name + ' ' + s.town).toLowerCase() }, cb, el('span', { class: 'rk' }, s.rank || '–'),
-      el('span', { class: 'nm' }, s.name.replace(' Secondary College', ' SC').replace(' High School', ' HS'), ...badges, el('br'), el('span', { class: 'town' }, s.town + vce))));
+    const row = el('label', { class: 'sch', 'data-q': (s.name + ' ' + s.town).toLowerCase() }, cb, el('span', { class: 'rk' }, s.rank || '–'),
+      el('span', { class: 'nm' }, s.name.replace(' Secondary College', ' SC').replace(' High School', ' HS'), ...badges, el('br'), el('span', { class: 'town' }, s.town + vce)));
+    rows.set(s, row); list.append(row);
   }
   const count = el('p', { class: 'note' }, ticked());
-  const find = el('input', { type: 'search', class: 'schoolFind', placeholder: 'Find a school or suburb', 'aria-label': 'Find a school or suburb' });
-  find.oninput = () => { const t = find.value.trim().toLowerCase(); for (const r of list.children) r.hidden = !r.dataset.q.includes(t); };
-  wrap.append(q, find, list, count);
+  find.oninput = filterRows;
+  wrap.append(seg, qPub, qPriv, find, list, count);
+  showSector();
   return wrap;
 }
 
@@ -590,7 +618,7 @@ function drawPois() {
     if (S.train.on) for (const k in TRAIN_KEYS) if (S.train.lines[k]) pois[TRAIN_KEYS[k]].forEach((p) => add(p, '#0b7285', 6, p.name));
   }
   if (z >= 14) for (const l of LAYERS) if (l.extra && S[l.id].on && pois[l.id]) pois[l.id].forEach((p) => add(p, l.color, 4, p.name || l.label));
-  if (S.high.on) { const on = new Set(S.high.schools); meta.schools.forEach((s) => { if (on.has(s.name)) add(s, '#7048e8', 7, schoolLabel(s)); }); }
+  if (S.high.on) { const on = chosenSchools(); meta.schools.forEach((s) => { if (on.has(s.name)) add(s, '#7048e8', 7, schoolLabel(s)); }); }
 }
 async function drawParks() {
   if (parkLayer) { map.removeLayer(parkLayer); parkLayer = null; }
@@ -604,7 +632,7 @@ async function drawZones() {
   if (zoneLayer) { map.removeLayer(zoneLayer); zoneLayer = null; }
   if (!S.showZones) return;
   if (!zonesData) zonesData = await (await fetch('data/zones.geojson')).json();
-  const on = new Set(S.high.schools);
+  const on = chosenSchools();
   zoneLayer = L.geoJSON(zonesData, { filter: (f) => on.has(f.properties.name), style: { color: '#7048e8', weight: 1.5, fillOpacity: 0.04, dashArray: '4 3' }, interactive: false, onEachFeature: undefined }).addTo(map);
 }
 
@@ -644,7 +672,7 @@ async function openPopup(ll) {
   line('Train station', nearest(trains, (k) => pois[k], i, (p) => p.name), st.train.max);
   line('Park', nearest([st.park.tier], () => pois.parks, i, (p) => (p.name || 'Unnamed reserve') + ` (${p.ha} ha${p.play ? ', playground' : p.sport ? ', sports ground' : ''})`), st.park.max);
   line('Primary school', nearest(prim, (k) => pois[k], i, (p) => p.name), st.primary.max);
-  const r = (i / cols) | 0, c = i % cols, sel = new Set(st.high.schools);
+  const r = (i / cols) | 0, c = i % cols, sel = chosenSchools();
   let hb = null; const zones = [];
   for (const s of meta.schools) {
     const w = s.win;
