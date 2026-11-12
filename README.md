@@ -1,21 +1,23 @@
 # Melbourne Sweet Spot
 
-An interactive map for finding the parts of Melbourne where the things you want are all within walking distance.
+I built this to help with house-hunting: a map of the parts of Melbourne where the things you want are all within walking distance.
 
 **Live: https://ryanward.dev/melbourne-sweet-spot/**
 
-Pick what matters, such as a supermarket, train station, park, schools and gyms, and set how far you'd walk to each. The map shows the pockets of residential land that meet every filter, and tapping anywhere shows what's nearest. Optional filters cover cafés, restaurants, pubs, GPs, pharmacies, childcare, libraries, tram stops, public pools and beaches. There's a lower-crime filter, and personas such as Young family and DINKs set everything at once.
+Pick who's moving, or set your own filters for a supermarket, train station, park, schools, gyms and a budget, and how far you'd walk to each. The map shows the sweet spots of residential land that tick every box, and tapping anywhere shows what's close. More filters cover cafés, restaurants, pubs, GPs, pharmacies, childcare, libraries, tram stops, public pools, beaches and keeping away from schools. Personas such as Young family and Couple, no kids set everything at once.
 
 ## How it works
 
-Walking distances are measured along the real path network from OpenStreetMap, not in straight lines. Distances to each type of place are precalculated on a roughly 50 m grid, so all the filtering runs in the browser on static files, with no server.
+Walking distances are measured along the real path network from OpenStreetMap, not in straight lines (except "Away from schools", which is about noise and traffic, so it is straight-line). Distances to each type of place are precalculated on a roughly 50 m grid, stored in 20 m steps from each cell's centre and capped at about 5 km. All the filtering runs in the browser on static files, with no server, and only the grids your filters need get downloaded.
 
 Distances were spot-checked against 60 OSRM walking routes, with a median difference of about 26 m.
 
 ## Limits
 
-Listings can be out of date, and proximity says nothing about quality. A home near a school isn't guaranteed a place there, so check zones with the school or Find My School.
+Listings can be out of date, and being close to something says nothing about how good it is. A home near a school isn't guaranteed a place there, so check zones with the school or Find My School. Budget uses suburb medians, so a family home will often cost more than the median.
 
 ## Data
 
-Built from OpenStreetMap (ODbL), Overture Maps, Vicmap, the Victorian Department of Education, Public Transport Victoria, the Crime Statistics Agency, the ABS, Homes Victoria, Better Education and gym operators' own websites. Full credits are in the app. The map data stays under its original licences.
+Built from OpenStreetMap (ODbL), Overture Maps, and State of Victoria data under CC BY 4.0: Vicmap, the Department of Education, Public Transport Victoria, Homes Victoria and the Valuer-General Victoria. School results come from Better Education, and gym details from each operator's website. Full credits are in the app under "About and data". The map data stays under its original licences.
+
+The scripts that build the data files aren't in this repo yet.

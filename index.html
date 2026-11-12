@@ -3,64 +3,81 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Melbourne Sweet Spot</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏠</text></svg>">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://tile.openstreetmap.org; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<title>Melbourne Sweet Spot: be close to what matters</title>
+<meta name="description" content="Find the parts of Melbourne where a supermarket, train, park, schools and gym are all a short walk away, measured along real paths rather than straight lines.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Melbourne Sweet Spot: be close to what matters">
+<meta property="og:description" content="Find where in Melbourne you can walk to the things you care about, measured along real paths rather than straight lines.">
+<meta property="og:url" content="https://ryanward.dev/melbourne-sweet-spot/">
+<meta property="og:image" content="https://ryanward.dev/melbourne-sweet-spot/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="A map of Melbourne with green areas where everything chosen is within walking distance.">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏠</text></svg>">
 <link rel="stylesheet" href="vendor/leaflet.css">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <aside id="panel">
-  <div id="grab" role="button" tabindex="0" aria-label="Show or hide filters">
-    <span class="handle"></span>
+  <a class="skip" href="#pocketBlock">Skip to sweet spots</a>
+  <a class="skip" href="#map">Skip to map</a>
+  <div id="top">
+    <button id="grab" type="button" aria-label="Show filters" aria-expanded="false" aria-controls="scroll"><span class="handle"></span></button>
     <header>
       <h1>Melbourne Sweet Spot</h1>
-      <p class="sub">Walking distance over the real path network. Switch layers on and off to find your ideal location.</p>
+      <p class="sub">Find where in Melbourne you can walk to the things you care about. Tap the map to see what’s close.</p>
     </header>
-    <div id="summary" aria-live="polite"></div>
+    <div id="summary"></div>
+    <div id="status" class="sr-only" role="status"></div>
   </div>
   <div id="scroll">
-  <section id="personas" aria-label="Personas">
-    <h2>Who's moving?</h2>
+  <section id="personas" aria-labelledby="personasH">
+    <h2 id="personasH">Who’s moving?</h2>
     <div id="personaBtns"></div>
     <p id="personaHint" class="note"></p>
   </section>
-  <section id="view" class="seg" role="group" aria-label="Map view">
-    <button data-view="all">Meets all</button>
-    <button data-view="count">How many met</button>
+  <section aria-labelledby="filtersH">
+    <h2 id="filtersH" class="sr-only">Filters</h2>
+    <div id="layers"></div>
   </section>
-  <section id="layers"></section>
   <section class="block">
     <details>
       <summary>Land use &amp; display</summary>
       <div id="landuse"></div>
-      <label class="row"><input type="checkbox" id="showPoi"> Show amenity pins</label>
+      <label class="row"><input type="checkbox" id="showPoi"> Show places on the map</label>
       <label class="row"><input type="checkbox" id="showParks"> Show park outlines (zoom in)</label>
       <label class="row"><input type="checkbox" id="showZones"> Show zones of ticked schools</label>
       <label class="row slider">Map opacity <input type="range" id="opacity" min="20" max="100" step="5"></label>
     </details>
   </section>
-  <section class="block" id="pocketBlock">
+  <section class="block" id="pocketBlock" tabindex="-1" aria-labelledby="pocketsH">
     <div class="head">
-      <h2>Pockets <span id="pocketCount"></span></h2>
-      <button id="exportCsv" class="link">Export CSV</button>
+      <h2 id="pocketsH">Sweet spots <span id="pocketCount"></span></h2>
+      <button id="exportCsv" class="link" type="button">Export CSV</button>
     </div>
-    <label class="row slider">Ignore pockets under <output id="minHaOut"></output>
+    <label class="row slider">Ignore spots under <output id="minHaOut"></output>
       <input type="range" id="minHa" min="0" max="40" step="1"></label>
     <ol id="pockets"></ol>
   </section>
   <footer>
-    <button id="reset" class="link">Reset to the original brief</button>
+    <button id="reset" class="link" type="button">Start over</button>
     <span id="built"></span>
     <details class="credits">
-      <summary>Data and credits</summary>
-      <p>A personal house-hunting tool. Distances and listings can be out of date, so check anything that matters.</p>
-      <p>Map and places © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a> (ODbL). Places also from <a href="https://overturemaps.org" target="_blank" rel="noopener">Overture Maps Foundation</a>. Planning zones, suburbs and open space from Vicmap, © State of Victoria (CC BY 4.0). School locations and zones from the Victorian Department of Education. Train and tram stops from Public Transport Victoria via <a href="https://discover.data.vic.gov.au" target="_blank" rel="noopener">DataVic</a>. Rents from Homes Victoria (DFFH). Sale prices from the Valuer-General Victoria. School results from <a href="https://bettereducation.com.au" target="_blank" rel="noopener">Better Education</a>. Gym details from each operator's website.</p>
+      <summary>About and data</summary>
+      <p>I built this as a personal house-hunting tool. Distances and listings can be out of date, and being close to something says nothing about how good it is, so check anything that matters.</p>
+      <p>Walking distances follow OpenStreetMap paths on a 50 m grid, rounded to 20 m and capped at 5 km. Spot checks against 60 OSRM walking routes differed by about 26 m (median).</p>
+      <p>Map and places © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a> (ODbL). Places also from <a href="https://overturemaps.org" target="_blank" rel="noopener">Overture Maps Foundation</a>.</p>
+      <p>From the State of Victoria, under CC BY 4.0: planning zones, suburbs and open space (Vicmap); school locations and 2027 zones (Department of Education); train and tram stops (Public Transport Victoria via <a href="https://discover.data.vic.gov.au" target="_blank" rel="noopener">DataVic</a>); median rents by rental area (Homes Victoria); and median sale prices for 2025 and the March quarter 2026 (Valuer-General Victoria).</p>
+      <p>School results and rankings from <a href="https://bettereducation.com.au" target="_blank" rel="noopener">Better Education</a>. Gym details from each operator’s website.</p>
     </details>
   </footer>
   </div>
 </aside>
 <main id="map"></main>
-<div id="loading"><div>Loading map data… <span id="loadPct"></span></div></div>
+<div id="loading" role="status" data-boot="1"><span id="loadMsg">Loading map data…</span> <span id="loadPct"></span></div>
 <script src="vendor/leaflet.js"></script>
 <script src="app.js"></script>
 </body>
