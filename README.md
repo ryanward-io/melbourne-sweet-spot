@@ -18,6 +18,6 @@ Listings can be out of date, and being close to something says nothing about how
 
 ## Data
 
-Built from OpenStreetMap (ODbL), Overture Maps, and State of Victoria data under CC BY 4.0: Vicmap, the Department of Education, Public Transport Victoria, Homes Victoria and the Valuer-General Victoria. School results come from Better Education, and gym details from each operator's website. Full credits are in the app under "About and data". The map data stays under its original licences.
+Built from OpenStreetMap (ODbL, 4 November 2026), Overture Maps (October 2026 release), and State of Victoria data under CC BY 4.0: Vicmap, the Department of Education, Public Transport Victoria, Homes Victoria and the Valuer-General Victoria. High school rankings are Better Education's 2025 list, and gyms were checked against each chain's or gym's own website on 6 November 2026. Full credits are in the app under "About and data". The map data stays under its original licences.
 
 The scripts that build the data files aren't in this repo yet.

@@ -670,7 +670,7 @@ function schoolPicker(onChange) {
   const count = el('p', { class: 'note', role: 'status' });
   find.oninput = filterRows;
   const box = el('details', { class: 'schoolsBox' }, el('summary', {}, 'Choose schools ', sum),
-    seg, qPub, qPriv, el('p', { class: 'note' }, '# ranks public schools by VCE results, from Better Education.'), find, list, count);
+    seg, qPub, qPriv, el('p', { class: 'note' }, '# is Better Education’s 2025 rank for public schools. It’s their own score, not a VCE ranking.'), find, list, count);
   showSector();
   return box;
 }
